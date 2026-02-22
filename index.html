@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ترددات الروح - نغم</title>
+    <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Tajawal:wght@300;400&display=swap" rel="stylesheet">
+    
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000000; /* سواد مطلق وفخم */
+            overflow: hidden;
+            font-family: 'Amiri', serif;
+            color: #ffffff;
+            touch-action: none;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* حاوية الرسم (الموجة الصوتية) */
+        #wave-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            cursor: pointer;
+        }
+
+        /* الطبقة الأمامية للنصوص */
+        #content-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            pointer-events: none;
+        }
+
+        /* التلميح في البداية */
+        #hint {
+            position: absolute;
+            font-family: 'Tajawal', sans-serif;
+            font-size: 1.2rem;
+            color: rgba(255, 255, 255, 0.4);
+            letter-spacing: 2px;
+            top: 40%;
+            transition: opacity 2s ease;
+            animation: breathe 4s infinite alternate;
+        }
+
+        @keyframes breathe {
+            0% { opacity: 0.1; transform: translateY(0); }
+            100% { opacity: 0.5; transform: translateY(-5px); }
+        }
+
+        /* نصوص الرسالة الرومانسية */
+        .poem-line {
+            position: absolute;
+            width: 90%;
+            max-width: 800px;
+            text-align: center;
+            font-size: 2.5rem;
+            line-height: 1.8;
+            color: #f8f4e6;
+            opacity: 0;
+            transform: translateY(30px) scale(0.95);
+            transition: all 4s cubic-bezier(0.25, 1, 0.5, 1); /* دخول بطيء جداً وناعم */
+            text-shadow: 0 0 20px rgba(212, 175, 55, 0.3);
+        }
+
+        .poem-line.visible {
+            opacity: 1;
+            transform: translateY(-80px) scale(1);
+        }
+
+        .poem-line.fade-out {
+            opacity: 0;
+            transform: translateY(-120px) scale(1.02);
+            transition: all 3s ease;
+            filter: blur(3px); /* تلاشي ضبابي شاعري */
+        }
+
+        .highlight {
+            color: #d4af37;
+            font-weight: bold;
+            font-size: 3.5rem;
+            text-shadow: 0 0 30px rgba(212, 175, 55, 0.6);
+        }
+
+        /* التوقيع */
+        .signature {
+            position: absolute;
+            bottom: 15%;
+            font-family: 'Tajawal', sans-serif;
+            font-size: 1.2rem;
+            color: #d4af37;
+            opacity: 0;
+            transition: opacity 4s ease;
+            text-align: center;
+            border-top: 1px solid rgba(212, 175, 55, 0.2);
+            padding-top: 20px;
+            letter-spacing: 1px;
+            text-shadow: 0 0 15px rgba(212, 175, 55, 0.3);
+        }
+
+        .signature.visible {
+            opacity: 1;
+        }
+
+        @media (max-width: 768px) {
+            .poem-line { font-size: 1.8rem; }
+            .highlight { font-size: 2.5rem; }
+            .poem-line.visible { transform: translateY(-60px) scale(1); }
+            .signature { bottom: 10%; }
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="wave-canvas"></canvas>
+
+    <div id="content-layer">
+        <div id="hint">المسي خط الصمت.. لتبدأ الموسيقى</div>
+        <div class="signature" id="signature">
+            بكل حُب،<br>
+            من إعداد قيس جازي 🤍
+        </div>
+    </div>
+
+    <script>
+        // --- 1. المحرك الصوتي الشاعري والهادئ جداً (Ambient Swells Engine) ---
+        let audioCtx;
+        let masterGain;
+        let reverbNode;
+        let isPlaying = false;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // التحكم في الصوت العام (منخفض جداً ليكون هادئاً وخافتاً)
+                masterGain = audioCtx.createGain();
+                masterGain.gain.value = 0.15; // تم خفض الصوت بشكل كبير جداً
+                masterGain.connect(audioCtx.destination);
+
+                // إعداد صدى عميق ودافئ (Delay as Reverb)
+                reverbNode = audioCtx.createDelay(4.0);
+                reverbNode.delayTime.value = 0.8; 
+                
+                let feedback = audioCtx.createGain();
+                feedback.gain.value = 0.5; 
+
+                let filter = audioCtx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.value = 600; // كتم الترددات الحادة لتجنب الإزعاج
+
+                reverbNode.connect(filter);
+                filter.connect(feedback);
+                feedback.connect(reverbNode);
+                reverbNode.connect(masterGain);
+            }
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        // دالة لتوليد نغمات "تتنفس" ببطء شديد (Swells)
+        function playAmbientSwell(freq, startTime, duration, vol = 0.5) {
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            const filter = audioCtx.createBiquadFilter();
+
+            // موجة جيبية (Sine) نقية جداً لأنها الأدفأ والأكثر هدوءاً
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, startTime);
+
+            // فلتر منخفض لضمان نعومة الصوت المطلقة
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(300, startTime); 
+            filter.frequency.linearRampToValueAtTime(600, startTime + (duration/2)); // يفتح ببطء
+            filter.frequency.linearRampToValueAtTime(300, startTime + duration); // يغلق ببطء
+
+            // هندسة الصوت (Envelope) - بطيء جداً في الظهور والتلاشي
+            gainNode.gain.setValueAtTime(0, startTime);
+            gainNode.gain.linearRampToValueAtTime(vol, startTime + (duration * 0.4)); // يستغرق وقتاً طويلاً ليصل لأعلى صوت
+            gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + duration); // يتلاشى بنعومة فائقة
+
+            osc.connect(filter);
+            filter.connect(gainNode);
+            
+            // توجيه الصوت للمخرج وللصدى
+            gainNode.connect(masterGain);
+            gainNode.connect(reverbNode);
+
+            osc.start(startTime);
+            osc.stop(startTime + duration + 1);
+        }
+
+        // مقطوعة تأملية هادئة (Ambient progression)
+        function playSymphony() {
+            initAudio();
+            const now = audioCtx.currentTime;
+            
+            // أوتار موسيقية عميقة ودافئة (فترات طويلة جداً بين النغمات)
+            // C Major 7th & A minor 9th (الأكثر رومانسية في الموسيقى)
+            const chords = [
+                // الوتر الأول (A minor - حزين وعميق)
+                {f: 110.00, t: 0, d: 15, v: 0.6}, // A2 (أساس عميق)
+                {f: 164.81, t: 2, d: 12, v: 0.4}, // E3
+                {f: 261.63, t: 4, d: 10, v: 0.3}, // C4
+                
+                // الوتر الثاني (F Major 9 - انتقال للأمل ببطء)
+                {f: 87.31,  t: 12, d: 16, v: 0.7}, // F2 (أساس أعمق)
+                {f: 130.81, t: 14, d: 12, v: 0.4}, // C3
+                {f: 220.00, t: 16, d: 10, v: 0.3}, // A3
+                {f: 329.63, t: 18, d: 8,  v: 0.2}, // E4 (نغمة تطفو بلطف)
+
+                // الوتر الثالث (C Major - راحة ودفء)
+                {f: 130.81, t: 24, d: 15, v: 0.6}, // C3
+                {f: 196.00, t: 26, d: 12, v: 0.4}, // G3
+                {f: 261.63, t: 28, d: 10, v: 0.3}, // C4
+                
+                // الوتر الرابع (G Major - معلق وحالم)
+                {f: 98.00,  t: 34, d: 15, v: 0.6}, // G2
+                {f: 146.83, t: 36, d: 12, v: 0.4}, // D3
+                {f: 246.94, t: 38, d: 10, v: 0.3}  // B3
+            ];
+
+            chords.forEach(note => {
+                playAmbientSwell(note.f, now + note.t, note.d, note.v);
+            });
+
+            // إعادة دورة الموسيقى ببطء (كل 45 ثانية)
+            setTimeout(playSymphony, 45000); 
+        }
+
+
+        // --- 2. التحكم في رسالة الحب (إيقاع مسرحي بطيء جداً) ---
+        const lyrics = [
+            "البعض يكتب رسائل الحب بالحبر والورق...",
+            "أما أنا، فقد كتبتها باللحن.",
+            "لأن اسمكِ ليس مجرد حروف...",
+            "إنه <span class='highlight'>نَغَم</span>.",
+            "كل تموجٍ في هذا النور هو نبضةٌ من قلبي،",
+            "وكل نوتةٍ تسمعينها... تهمسُ لكِ: أحبكِ."
+        ];
+
+        const contentLayer = document.getElementById('content-layer');
+        const signature = document.getElementById('signature');
+
+        async function showLyrics() {
+            // الانتظار 3 ثواني ليأخذ اللحن الهادئ مكانه في الصمت
+            await new Promise(r => setTimeout(r, 3000));
+
+            for (let i = 0; i < lyrics.length; i++) {
+                const line = document.createElement('div');
+                line.className = 'poem-line';
+                line.innerHTML = lyrics[i];
+                contentLayer.appendChild(line);
+
+                // إظهار السطر ببطء
+                setTimeout(() => line.classList.add('visible'), 100);
+
+                // الانتظار لفترة طويلة (6 إلى 7 ثواني) لتتناغم مع الموسيقى الهادئة
+                let waitTime = i === 3 ? 7000 : 6000; 
+                await new Promise(r => setTimeout(r, waitTime));
+
+                // إخفاء السطر بتلاشي شاعري
+                if (i < lyrics.length - 1) {
+                    line.classList.remove('visible');
+                    line.classList.add('fade-out');
+                    setTimeout(() => line.remove(), 3000); 
+                }
+            }
+
+            // إظهار التوقيع بهدوء تام في النهاية
+            setTimeout(() => {
+                signature.classList.add('visible');
+            }, 1000);
+        }
+
+        // --- 3. هندسة الرسم (الموجة الصوتية الذهبية التفاعلية) ---
+        const canvas = document.getElementById('wave-canvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+        let time = 0;
+        let amplitude = 0; 
+        let targetAmplitude = 0;
+        let mouseX = -1000;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            // إعادة رسم الخط الساكن إذا لم يتم التشغيل بعد
+            if(!isPlaying) drawWave();
+        }
+        window.addEventListener('resize', resize);
+
+        // التفاعل الشاعري مع الإصبع
+        canvas.addEventListener('mousemove', (e) => { mouseX = e.clientX; });
+        canvas.addEventListener('touchmove', (e) => { mouseX = e.touches[0].clientX; });
+        canvas.addEventListener('mouseleave', () => { mouseX = -1000; });
+        canvas.addEventListener('touchend', () => { mouseX = -1000; });
+
+        function drawWave() {
+            ctx.clearRect(0, 0, width, height);
+
+            // انتقال ناعم جداً (أبطأ من قبل)
+            amplitude += (targetAmplitude - amplitude) * 0.02;
+
+            for (let i = 0; i < 3; i++) {
+                ctx.beginPath();
+                ctx.lineWidth = i === 0 ? 2 : 0.8; 
+                
+                if (i === 0) {
+                    ctx.strokeStyle = `rgba(212, 175, 55, 0.9)`;
+                    ctx.shadowBlur = 30;
+                    ctx.shadowColor = 'rgba(212, 175, 55, 0.6)'; 
+                } else {
+                    ctx.strokeStyle = `rgba(212, 175, 55, ${0.3 - i*0.1})`;
+                    ctx.shadowBlur = 0;
+                }
+
+                for (let x = 0; x <= width; x += 3) {
+                    let baseFreq = 0.002 + (i * 0.001);
+                    // حركة الموجة أصبحت أبطأ وأنعم بكثير
+                    let yOffset = Math.sin(x * baseFreq + time + (i * Math.PI/3)) * amplitude;
+                    
+                    let distToMouse = Math.abs(x - mouseX);
+                    if (distToMouse < 300 && isPlaying) {
+                        let influence = Math.pow((300 - distToMouse) / 300, 2); // انحناء سلس جداً
+                        yOffset += Math.sin(time * 2 + x * 0.01) * (40 * influence) * (amplitude/100);
+                    }
+
+                    ctx.lineTo(x, (height / 2) + yOffset);
+                }
+                ctx.stroke();
+            }
+
+            time += 0.01; // سرعة الزمن أبطأ بكثير للهدوء
+            if(isPlaying || amplitude > 0.1) {
+                requestAnimationFrame(drawWave);
+            }
+        }
+        
+        // رسم مبدئي
+        resize();
+
+        // --- 4. بدء التجربة ---
+        canvas.addEventListener('click', () => {
+            if (isPlaying) return;
+            isPlaying = true;
+
+            document.getElementById('hint').style.opacity = '0';
+            
+            // ارتفاع موجة معتدل جداً وأنيميشن هادئ
+            targetAmplitude = window.innerHeight * 0.12; 
+
+            playSymphony();
+            showLyrics();
+            requestAnimationFrame(drawWave);
+
+            // نبض وهمي وخافت جداً للموجة
+            setInterval(() => {
+                if(isPlaying) {
+                    targetAmplitude = (window.innerHeight * 0.1) + Math.random() * (window.innerHeight * 0.05);
+                }
+            }, 5000); 
+        });
+
+    </script>
+</body>
+</html>
+
+
